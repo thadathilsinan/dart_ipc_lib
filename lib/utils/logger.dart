@@ -20,9 +20,8 @@ class Logger {
   }
 
   /// Print as error
-  static error(String message) {
+  static error(dynamic message) {
     _logger.e('ERROR: $message');
-    throw Exception(message);
   }
 
   /// Print as info

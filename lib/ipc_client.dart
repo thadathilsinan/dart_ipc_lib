@@ -84,28 +84,44 @@ class IPCClient {
       /// This string must be in the JSON format of a Packet object.
       String dataString = String.fromCharCodes(data);
 
-      /// Create the Packet object from the JSON string
-      Packet recievedPacket = Packet.fromJson(dataString);
+      /// In some cases there are chances of getting multiple JSON objects in the
+      /// same data. So, split the data into individual JSON objects and convert
+      /// them to Packet objects.
+      final dataJsons = dataString.split('}');
 
-      /// If there is a packet sent by this client with the same ID as the received packet,
-      /// then this will be the response to that packet.
-      ///
-      /// Otherwise, this will be a broadcast message from the server.
-      if (_sentPackets
-          .any((sentPacket) => sentPacket.packet.id == recievedPacket.id)) {
-        /// Find the packet sent by this client with the same ID as the received packet
-        final sentPacket = _sentPackets.firstWhere(
-            (sentPacket) => sentPacket.packet.id == recievedPacket.id);
+      for (var dataJson in dataJsons) {
+        /// If the JSON object is empty, then skip it.
+        if (dataJson.trim().isEmpty) {
+          continue;
+        }
 
-        /// Remove the sent packet from the list of sent packets
-        _sentPackets.removeWhere(
-            (sentPacket) => sentPacket.packet.id == recievedPacket.id);
+        /// When splitting the data, the closing bracket of the JSON object is removed.
+        /// So, add the closing bracket back to the JSON string.
+        dataJson = '$dataJson}';
 
-        /// Complete the completer of the sent packet with the response data
-        sentPacket.completer.complete(recievedPacket.data);
-      } else {
-        /// Call the broadcast message received callback if the user has provided it
-        onBroadcastMessageRecievedCallback?.call(recievedPacket.data);
+        /// Create the Packet object from the JSON string
+        Packet recievedPacket = Packet.fromJson(dataJson);
+
+        /// If there is a packet sent by this client with the same ID as the received packet,
+        /// then this will be the response to that packet.
+        ///
+        /// Otherwise, this will be a broadcast message from the server.
+        if (_sentPackets
+            .any((sentPacket) => sentPacket.packet.id == recievedPacket.id)) {
+          /// Find the packet sent by this client with the same ID as the received packet
+          final sentPacket = _sentPackets.firstWhere(
+              (sentPacket) => sentPacket.packet.id == recievedPacket.id);
+
+          /// Remove the sent packet from the list of sent packets
+          _sentPackets.removeWhere(
+              (sentPacket) => sentPacket.packet.id == recievedPacket.id);
+
+          /// Complete the completer of the sent packet with the response data
+          sentPacket.completer.complete(recievedPacket.data);
+        } else {
+          /// Call the broadcast message received callback if the user has provided it
+          onBroadcastMessageRecievedCallback?.call(recievedPacket.data);
+        }
       }
     } catch (e) {
       Logger.error("Error in handling server response: $e");

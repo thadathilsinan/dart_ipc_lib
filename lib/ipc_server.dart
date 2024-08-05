@@ -32,12 +32,24 @@ class IPCServer {
   /// Create the server with the socket file path and the callback to execute on request from
   /// client is received.
   IPCServer({required this.socketFilePath, required this.onRequestCallback}) {
-    /// Remove the Socket file, if already present
     File socketFile = File(socketFilePath);
+
+    /// Remove the Socket file, if already present
     if (socketFile.existsSync()) {
       socketFile.deleteSync();
       Logger.info("Deleted existing socket file.");
     }
+
+    /// Create the socket file path
+    socketFile.createSync(recursive: true);
+
+    /// Now that the socket file is created, we have created the folders
+    /// and the file. But we need to remove the file before binding the server
+    /// to the socket file.
+    ///
+    /// The above file creation is just to create the folders required
+    /// for the socket file.
+    socketFile.deleteSync();
 
     _initialize();
   }
@@ -94,6 +106,7 @@ class IPCServer {
         await client.flush();
         await client.close();
       },
+      cancelOnError: false,
     );
   }
 
