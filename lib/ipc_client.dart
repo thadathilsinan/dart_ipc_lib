@@ -26,6 +26,9 @@ class IPCClient {
   /// The port number of the server
   static final _port = 0;
 
+  /// A completer used to indicate that the connection is established
+  final Completer<bool> _connectionCompleter = Completer<bool>();
+
   /// Server socket file path
   final String serverSocketFilePath;
 
@@ -62,6 +65,9 @@ class IPCClient {
     } while (true);
 
     Logger.info("Connceted to server.");
+
+    /// Mark the connection as established
+    _connectionCompleter.complete(true);
 
     /// Listen for the responses from the server
     _client.listen(_serverResponseHandler);
@@ -107,8 +113,9 @@ class IPCClient {
   }
 
   /// Send a given packet to the server
-  void _sendPacket(Packet packet) {
+  Future<void> _sendPacket(Packet packet) async {
     _client.write(packet.toJson());
+    await _client.flush();
   }
 
   /// Send a message to the server
@@ -118,11 +125,14 @@ class IPCClient {
   /// Then return the response from the server if the [noResponse] is false.
   /// If the [noResponse] is true, then return null immediately.
   Future<String?> sendMessage(String message, {bool noResponse = false}) async {
+    /// Wait for the connection to be established before sending the message
+    await _connectionCompleter.future;
+
     /// Generate packet of data with a new UUID
     Packet packetToSend = Packet(message);
 
     /// Send message packet
-    _sendPacket(packetToSend);
+    await _sendPacket(packetToSend);
 
     if (noResponse) {
       return null;
@@ -137,7 +147,14 @@ class IPCClient {
   }
 
   /// Close the connection to the server
-  void close() {
+  Future<void> close() async {
+    if (!_connectionCompleter.isCompleted ||
+        !await _connectionCompleter.future) {
+      /// No connection established
+      return;
+    }
+
+    _client.flush();
     _client.close();
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dart_ipc_lib/models/packet.dart';
@@ -12,18 +13,21 @@ class IPCServer {
   /// All clients connected to this server are stored in this list
   final List<Socket> _clients = List.empty(growable: true);
 
+  /// Address to create server Socket (UNIX IPC Socket)
+  late final InternetAddress _internetAddress =
+      InternetAddress(socketFilePath, type: InternetAddressType.unix);
+
+  /// Unix domain socket server
+  late final ServerSocket _server;
+
+  /// A completer used to indicate that the server is initialized
+  final Completer<bool> _serverInitializedCompleter = Completer<bool>();
+
   /// Socket file in the System files
   final String socketFilePath;
 
   /// A callback to execute when a request is received from a client
   final Future<String?> Function(String?) onRequestCallback;
-
-  /// Address to create server Socket (UNIX IPC Socket)
-  late final InternetAddress internetAddress =
-      InternetAddress(socketFilePath, type: InternetAddressType.unix);
-
-  /// Unix domain socket server
-  late final ServerSocket _server;
 
   /// Create the server with the socket file path and the callback to execute on request from
   /// client is received.
@@ -35,13 +39,13 @@ class IPCServer {
       Logger.info("Deleted existing socket file.");
     }
 
-    initialize();
+    _initialize();
   }
 
   /// Initialize the server and listen for the client connections
-  Future<void> initialize() async {
+  Future<void> _initialize() async {
     Logger.info("Initializing server...");
-    _server = await ServerSocket.bind(internetAddress, _port);
+    _server = await ServerSocket.bind(_internetAddress, _port);
 
     _server.listen(
       /// Handle incoming client connections
@@ -59,6 +63,9 @@ class IPCServer {
     );
 
     Logger.info("Server initialized");
+
+    /// Mark the server as initialized
+    _serverInitializedCompleter.complete(true);
   }
 
   /// Handle the incoming connections from the client programs
@@ -118,6 +125,7 @@ class IPCServer {
           /// for the request with this UUID.
           Packet response = Packet.as(request.id, returnValue);
           client.write(response.toJson());
+          await client.flush();
         } catch (e) {
           Logger.error('Error occured while handling client request: $e');
         }
@@ -126,33 +134,45 @@ class IPCServer {
   /// send a packet to all clients connected.
   ///
   /// This is used to broadcast a message to all clients connected to this server.
-  _sendPacket(Packet packet) async {
+  Future<void> _sendPacket(Packet packet) async {
     for (Socket client in _clients) {
       client.write(packet.toJson());
+      await client.flush();
     }
   }
 
   /// Send a message to all clients
   ///
   /// This is used to broadcast a message to all clients connected to this server.
-  sendMessage(String message) async {
+  Future<void> sendMessage(String message) async {
+    /// Wait for the server to be initialized before sending the message
+    await _serverInitializedCompleter.future;
+
     /// Generate packet of data with a new UUID
     Packet packetToSend = Packet(message);
 
     /// Send message packet
-    await _sendPacket(packetToSend);
+    _sendPacket(packetToSend);
   }
 
   /// Close the server and remove all the client connections
-  close() {
-    /// Remove all clients
-    _clients.removeWhere((client) {
+  Future<void> close() async {
+    /// Flush all clients and close them
+    for (Socket client in _clients) {
+      await client.flush();
       client.close();
+    }
 
-      return true;
-    });
+    /// Remove all clients
+    _clients.clear();
 
     /// Finally close the server
+    if (!_serverInitializedCompleter.isCompleted ||
+        !await _serverInitializedCompleter.future) {
+      /// Server is not initialized yet
+      return;
+    }
+
     _server.close();
   }
 }
