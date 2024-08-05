@@ -24,7 +24,8 @@ class IPCClient {
     Logger.info("Connecting...");
     do {
       try {
-        _client = await Socket.connect(IPCServer.address, IPCServer.port);
+        _client =
+            await Socket.connect(IPCServer.internetAddress, IPCServer._port);
         break;
       } catch (e) {
         // Connection failed, retry after 500 milliseconds
