@@ -119,7 +119,7 @@ class IPCServer {
           Packet response = Packet.as(request.id, returnValue);
           client.write(response.toJson());
         } catch (e) {
-          Logger.error('Error occured while handling request: $e');
+          Logger.error('Error occured while handling client request: $e');
         }
       };
 
